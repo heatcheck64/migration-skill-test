@@ -22,7 +22,6 @@ This skill includes detailed reference guides. Read the relevant guide as needed
 | `references/incremental-and-upserts.md` | Choosing incremental strategies and handling late-arriving data |
 | `references/parity-validation.md` | Proving semantic equivalence with legacy outputs |
 | `references/stored-procedure-migration-guide.md` | Following official dbt Labs migration guidance |
-| `references/migration-report-template.md` | Producing a reviewable migration report |
 
 ## The Iron Rules
 
@@ -31,7 +30,8 @@ This skill includes detailed reference guides. Read the relevant guide as needed
 3) **Use `source()` only in staging; use `ref()` everywhere else.**
 4) **Staging models are 1:1 with sources and do not join or aggregate.**
 5) **Preserve semantics before optimizing.**
-6) **Never claim success without parity validation.**
+6) **Never claim success without parity validation (or documenting why it was skipped).**
+7) **All generated SQL models and YAML must follow the dbt-fusion spec** to ensure compatibility with the dbt-fusion engine.
 
 ## Inputs to Request Up Front
 
@@ -50,6 +50,10 @@ Ask the user for:
   - naming conventions
   - folder structure
   - existing `sources.yml` patterns
+- Parity validation strategy (pick one):
+  1. **Audit Helper** — Full data comparison using `dbt-audit-helper`. Requires warehouse access to legacy output tables.
+  2. **Schema-only** — Compare column names/types against user-provided DDL or documentation. Use when there is no access to legacy data.
+  3. **Skip** — Skip parity validation entirely. Provide documentation on how the user can validate on their own later.
 
 If information is missing, document assumptions explicitly.
 
@@ -64,10 +68,15 @@ flowchart TD
   E --> F[Build marts]
   F --> G[Add tests + documentation]
   G --> H[Run dbt compile/build selectively]
-  H --> I[Parity validation]
-  I -->|pass| J[Optimize materialization]
-  I -->|fail| K[Reconcile + iterate]
-  J --> L[Write migration report]
+  H --> I{Parity validation strategy?}
+  I -->|Audit Helper| I1[Run audit_helper comparisons]
+  I1 -->|pass| J[Optimize materialization]
+  I1 -->|fail| K[Reconcile + iterate]
+  I -->|Schema-only| I2[Compare column names/types]
+  I2 --> J
+  I -->|Skip| I3[Document why skipped + provide self-validation guide]
+  I3 --> J
+  J --> L[Summarize migration in conversation]
 ```
 
 ## Interacting with the CLI (Required)
@@ -102,9 +111,11 @@ Each unit should map to one dbt model.
 
 ### Folders
 
-- `models/staging/<source_system>/`
-- `models/intermediate/<domain>/`
-- `models/marts/<domain>/`
+All migrated models go under a `migration/` folder to keep them separate from any existing project models:
+
+- `migration/models/staging/<source_system>/`
+- `migration/models/intermediate/<domain>/`
+- `migration/models/marts/<domain>/`
 
 ### Naming
 
@@ -155,4 +166,5 @@ Provide:
 - New or updated models and YAML
 - Parity validation summary
 - Materialization rationale
-- Migration report using the provided template
+
+All generated SQL and YAML must be compatible with the dbt-fusion engine. Do NOT create standalone markdown files (e.g. migration reports). Summarize findings directly in the conversation.
